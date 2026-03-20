@@ -50,7 +50,7 @@ def initialize_allocation(video_files):
             })
     return dict(group_key_map)
 
-def allocate_videos(group_key_map):
+def allocate_videos(group_key_map, max_files_per_folder=25):
     folders = []
     assignments = []
     
@@ -64,7 +64,7 @@ def allocate_videos(group_key_map):
         assigned = False
         
         for i, folder in enumerate(folders):
-            if video['group_key'] not in folder:
+            if video['group_key'] not in folder and len(folder) < max_files_per_folder:
                 folder[video['group_key']] = video
                 assignments.append({
                     'file_name': video['file'].name,
@@ -140,6 +140,8 @@ def main():
     parser.add_argument('--execute', '-e', action='store_true', help='添加此参数才会执行移动，否则只预览')
     parser.add_argument('--extensions', '-ext', default='mp4,avi,mkv,mov,wmv,flv,webm', 
                         help='支持的视频格式，默认为 mp4,avi,mkv,mov,wmv,flv,webm')
+    parser.add_argument('--max-files', '-m', type=int, default=25,
+                        help='每个文件夹最多允许放入的文件数量，默认为 25')
     
     args = parser.parse_args()
     
@@ -175,8 +177,9 @@ def main():
         return 0
     
     print(f'发现 {len(group_key_map)} 个不同的分组键')
+    print(f'设置每个文件夹最多存放 {args.max_files} 个文件')
     
-    result = allocate_videos(group_key_map)
+    result = allocate_videos(group_key_map, args.max_files)
     
     show_preview(result['assignments'])
     

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 cd "$(dirname "$0")"
-python3 视频分类脚本.py "." -e
+python3 视频分类脚本.py "." -e -m 25
 
 echo ""
 echo "按回车键退出..."

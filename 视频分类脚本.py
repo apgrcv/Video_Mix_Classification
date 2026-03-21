@@ -134,6 +134,52 @@ def execute_move(assignments, base_dir):
     print('\n===================================')
     print('执行完成！')
 
+def build_preview(source_dir, extensions='mp4,avi,mkv,mov,wmv,flv,webm', max_files=25):
+    if not os.path.exists(source_dir):
+        return {
+            'ok': False,
+            'message': f'错误: 目录不存在 - {source_dir}',
+            'video_files': [],
+            'group_key_map': {},
+            'result': {'folders': [], 'assignments': []}
+        }
+    if max_files <= 0:
+        return {
+            'ok': False,
+            'message': '错误: 每个文件夹最大文件数必须大于 0',
+            'video_files': [],
+            'group_key_map': {},
+            'result': {'folders': [], 'assignments': []}
+        }
+    global VIDEO_EXTENSIONS
+    VIDEO_EXTENSIONS = {f'.{ext.strip().lower()}' for ext in extensions.split(',') if ext.strip()}
+    video_files = get_video_files(source_dir)
+    if not video_files:
+        return {
+            'ok': False,
+            'message': '未找到任何视频文件',
+            'video_files': [],
+            'group_key_map': {},
+            'result': {'folders': [], 'assignments': []}
+        }
+    group_key_map = initialize_allocation(video_files)
+    if not group_key_map:
+        return {
+            'ok': False,
+            'message': '警告: 未找到符合规则的视频文件（格式：剧名开头数字或开头数字）',
+            'video_files': video_files,
+            'group_key_map': {},
+            'result': {'folders': [], 'assignments': []}
+        }
+    result = allocate_videos(group_key_map, max_files)
+    return {
+        'ok': True,
+        'message': '预览计算完成',
+        'video_files': video_files,
+        'group_key_map': group_key_map,
+        'result': result
+    }
+
 def main():
     parser = argparse.ArgumentParser(description='视频分类脚本 - 按开头分组视频')
     parser.add_argument('source_dir', help='视频所在的源目录路径')
@@ -146,41 +192,23 @@ def main():
     args = parser.parse_args()
     
     source_dir = args.source_dir
-    
-    if not os.path.exists(source_dir):
-        print(f'错误: 目录不存在 - {source_dir}')
-        return 1
-    
-    global VIDEO_EXTENSIONS
-    VIDEO_EXTENSIONS = {f'.{ext.strip().lower()}' for ext in args.extensions.split(',')}
-    
     print(f'扫描目录: {source_dir}')
     print('正在查找视频文件...')
-    
-    video_files = get_video_files(source_dir)
-    
-    if not video_files:
-        print('未找到任何视频文件')
+    preview_data = build_preview(source_dir, args.extensions, args.max_files)
+    if not preview_data['ok']:
+        print(preview_data['message'])
+        if preview_data['video_files']:
+            print('\n[调试信息] 当前目录下发现的部分文件:')
+            for f in preview_data['video_files'][:5]:
+                print(f'  - {f.name}')
         return 0
-    
+    video_files = preview_data['video_files']
+    group_key_map = preview_data['group_key_map']
+    result = preview_data['result']
     print(f'找到 {len(video_files)} 个视频文件')
     print('正在分析分组键...')
-    
-    group_key_map = initialize_allocation(video_files)
-    
-    if not group_key_map:
-        print('警告: 未找到符合规则的视频文件（格式：剧名开头数字）')
-        print('示例: 三万英尺开头1_xxxx.mp4')
-        print('\n[调试信息] 当前目录下发现的部分文件:')
-        for f in video_files[:5]:
-            print(f'  - {f.name}')
-        return 0
-    
     print(f'发现 {len(group_key_map)} 个不同的分组键')
     print(f'设置每个文件夹最多存放 {args.max_files} 个文件')
-    
-    result = allocate_videos(group_key_map, args.max_files)
-    
     show_preview(result['assignments'])
     
     if args.execute:

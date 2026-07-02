@@ -35,8 +35,18 @@ class VideoClassifierGUI:
         self.ext_var = tk.StringVar(value='mp4,avi,mkv,mov,wmv,flv,webm')
         ttk.Entry(top, textvariable=self.ext_var).grid(row=1, column=1, sticky=tk.EW, pady=(8, 0), padx=(200, 0))
 
+        # 添加剧名严格分离开关
+        self.strict_separation_var = tk.BooleanVar(value=False)
+        strict_check = ttk.Checkbutton(
+            top,
+            text='剧名严格分离',
+            variable=self.strict_separation_var,
+            command=self.on_strict_separation_change
+        )
+        strict_check.grid(row=2, column=0, columnspan=2, sticky=tk.W, pady=(8, 0))
+
         btns = ttk.Frame(top)
-        btns.grid(row=0, column=3, rowspan=2, padx=(12, 0), sticky=tk.NS)
+        btns.grid(row=0, column=3, rowspan=3, padx=(12, 0), sticky=tk.NS)
         ttk.Button(btns, text='预览', command=self.preview).pack(fill=tk.X)
         ttk.Button(btns, text='执行', command=self.execute).pack(fill=tk.X, pady=(8, 0))
         ttk.Button(btns, text='清空日志', command=self.clear_log).pack(fill=tk.X, pady=(8, 0))
@@ -81,6 +91,13 @@ class VideoClassifierGUI:
         if selected:
             self.dir_var.set(selected)
 
+    def on_strict_separation_change(self):
+        """当剧名严格分离选项变更时的回调"""
+        if self.strict_separation_var.get():
+            self.log('已启用剧名严格分离模式：同一文件夹内的视频剧名也必须不同')
+        else:
+            self.log('已关闭剧名严格分离模式：仅要求分组键不同')
+
     def clear_log(self):
         self.log_text.delete('1.0', tk.END)
 
@@ -106,7 +123,8 @@ class VideoClassifierGUI:
         if not extensions:
             messagebox.showerror('错误', '扩展名不能为空')
             return None
-        return source_dir, max_files, extensions
+        strict_separation = self.strict_separation_var.get()
+        return source_dir, max_files, extensions, strict_separation
 
     def _render_preview(self):
         self.folder_tree.delete(*self.folder_tree.get_children())
@@ -140,9 +158,9 @@ class VideoClassifierGUI:
         validated = self._validate_inputs()
         if not validated:
             return
-        source_dir, max_files, extensions = validated
+        source_dir, max_files, extensions, strict_separation = validated
         self.log('开始预览...')
-        preview_data = core.build_preview(source_dir, extensions, max_files)
+        preview_data = core.build_preview(source_dir, extensions, max_files, strict_separation)
         if not preview_data['ok']:
             self.summary_var.set('预览失败')
             self.log(preview_data['message'])
@@ -152,8 +170,11 @@ class VideoClassifierGUI:
         self.preview_source_dir = source_dir
         folder_count = len(set(x['target_folder'] for x in self.preview_assignments))
         file_count = len(self.preview_assignments)
-        self.summary_var.set(f'预览完成：共 {file_count} 个可分配视频，分配到 {folder_count} 个文件夹')
+        mode_str = ' [剧名严格分离]' if strict_separation else ''
+        self.summary_var.set(f'预览完成：共 {file_count} 个可分配视频，分配到 {folder_count} 个文件夹{mode_str}')
         self.log(f'预览完成：共 {file_count} 个可分配视频，分配到 {folder_count} 个文件夹')
+        if strict_separation:
+            self.log('使用剧名严格分离模式')
         self._render_preview()
 
     def execute(self):
@@ -163,7 +184,7 @@ class VideoClassifierGUI:
         validated = self._validate_inputs()
         if not validated:
             return
-        source_dir, _, _ = validated
+        source_dir, _, _, _ = validated
         if source_dir != self.preview_source_dir:
             messagebox.showwarning('提示', '目录已变更，请重新预览后再执行')
             return

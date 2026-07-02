@@ -50,31 +50,60 @@ def initialize_allocation(video_files):
             })
     return dict(group_key_map)
 
-def allocate_videos(group_key_map, max_files_per_folder=25):
+def allocate_videos(group_key_map, max_files_per_folder=25, strict_drama_separation=False):
+    """
+    分配视频到文件夹
+
+    Args:
+        group_key_map: 分组键映射
+        max_files_per_folder: 每个文件夹最大文件数
+        strict_drama_separation: 是否启用剧名严格分离模式
+            - False (默认): 同一文件夹内只要求 group_key 不重复
+            - True: 同一文件夹内还要求 drama_name 不重复
+    """
     folders = []
     assignments = []
-    
+
     all_videos = []
     for key, videos in group_key_map.items():
         all_videos.extend(videos)
-    
+
     all_videos.sort(key=lambda x: x['group_key'])
-    
+
     for video in all_videos:
         assigned = False
-        
+
         for i, folder in enumerate(folders):
-            if video['group_key'] not in folder and len(folder) < max_files_per_folder:
-                folder[video['group_key']] = video
-                assignments.append({
-                    'file_name': video['file'].name,
-                    'source_path': video['full_path'],
-                    'target_folder': f'分组结果_{i + 1:02d}',
-                    'group_key': video['group_key']
-                })
-                assigned = True
-                break
-        
+            # 检查 group_key 是否已在文件夹中
+            if video['group_key'] in folder:
+                continue
+
+            # 检查文件夹是否已满
+            if len(folder) >= max_files_per_folder:
+                continue
+
+            # 如果启用剧名严格分离,检查 drama_name 是否冲突
+            if strict_drama_separation and video['drama_name']:
+                # 检查文件夹中是否已有相同剧名的视频
+                drama_conflict = False
+                for existing_key, existing_video in folder.items():
+                    if existing_video['drama_name'] == video['drama_name']:
+                        drama_conflict = True
+                        break
+                if drama_conflict:
+                    continue
+
+            # 所有检查通过,分配到此文件夹
+            folder[video['group_key']] = video
+            assignments.append({
+                'file_name': video['file'].name,
+                'source_path': video['full_path'],
+                'target_folder': f'分组结果_{i + 1:02d}',
+                'group_key': video['group_key']
+            })
+            assigned = True
+            break
+
         if not assigned:
             new_folder = {video['group_key']: video}
             folders.append(new_folder)
@@ -84,7 +113,7 @@ def allocate_videos(group_key_map, max_files_per_folder=25):
                 'target_folder': f'分组结果_{len(folders):02d}',
                 'group_key': video['group_key']
             })
-    
+
     return {
         'folders': folders,
         'assignments': assignments
@@ -134,7 +163,7 @@ def execute_move(assignments, base_dir):
     print('\n===================================')
     print('执行完成！')
 
-def build_preview(source_dir, extensions='mp4,avi,mkv,mov,wmv,flv,webm', max_files=25):
+def build_preview(source_dir, extensions='mp4,avi,mkv,mov,wmv,flv,webm', max_files=25, strict_drama_separation=False):
     if not os.path.exists(source_dir):
         return {
             'ok': False,
@@ -171,7 +200,7 @@ def build_preview(source_dir, extensions='mp4,avi,mkv,mov,wmv,flv,webm', max_fil
             'group_key_map': {},
             'result': {'folders': [], 'assignments': []}
         }
-    result = allocate_videos(group_key_map, max_files)
+    result = allocate_videos(group_key_map, max_files, strict_drama_separation)
     return {
         'ok': True,
         'message': '预览计算完成',
@@ -184,17 +213,19 @@ def main():
     parser = argparse.ArgumentParser(description='视频分类脚本 - 按开头分组视频')
     parser.add_argument('source_dir', help='视频所在的源目录路径')
     parser.add_argument('--execute', '-e', action='store_true', help='添加此参数才会执行移动，否则只预览')
-    parser.add_argument('--extensions', '-ext', default='mp4,avi,mkv,mov,wmv,flv,webm', 
+    parser.add_argument('--extensions', '-ext', default='mp4,avi,mkv,mov,wmv,flv,webm',
                         help='支持的视频格式，默认为 mp4,avi,mkv,mov,wmv,flv,webm')
     parser.add_argument('--max-files', '-m', type=int, default=25,
                         help='每个文件夹最多允许放入的文件数量，默认为 25')
-    
+    parser.add_argument('--strict-drama-separation', '-s', action='store_true',
+                        help='启用剧名严格分离模式：同一文件夹内的视频剧名也必须不同')
+
     args = parser.parse_args()
-    
+
     source_dir = args.source_dir
     print(f'扫描目录: {source_dir}')
     print('正在查找视频文件...')
-    preview_data = build_preview(source_dir, args.extensions, args.max_files)
+    preview_data = build_preview(source_dir, args.extensions, args.max_files, args.strict_drama_separation)
     if not preview_data['ok']:
         print(preview_data['message'])
         if preview_data['video_files']:
@@ -209,8 +240,10 @@ def main():
     print('正在分析分组键...')
     print(f'发现 {len(group_key_map)} 个不同的分组键')
     print(f'设置每个文件夹最多存放 {args.max_files} 个文件')
+    if args.strict_drama_separation:
+        print('已启用剧名严格分离模式')
     show_preview(result['assignments'])
-    
+
     if args.execute:
         print()
         confirm = input('确认执行移动操作？(输入 y 确认，其他键取消): ')
@@ -222,7 +255,7 @@ def main():
         print()
         print('提示: 当前为预览模式，不会实际移动文件')
         print('如需执行移动，请添加 -e 或 --execute 参数')
-    
+
     return 0
 
 if __name__ == '__main__':
